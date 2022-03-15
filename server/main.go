@@ -203,7 +203,7 @@ func initial() {
 	config.Consumer.Return.Errors = true
 	fmt.Println("start connect kafka")
 	// 开始连接kafka服务器
-	address := []string{"127.0.0.1:2181"}
+	address := []string{"127.0.0.1:9092"}
 	client, err := sarama.NewClient(address, config)
 	if err != nil {
 		fmt.Println("connect kafka failed; err", err)
@@ -232,7 +232,7 @@ func initial() {
 	}
 }
 
-//同生产步消息模式
+//同步生产消息模式
 func syncProducer(data []byte) {
 	msg := &sarama.ProducerMessage{
 		Topic:     topic,

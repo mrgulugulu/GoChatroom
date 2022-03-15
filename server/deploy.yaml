@@ -23,7 +23,7 @@ spec:
       - name: regsecret
       containers:
       - name: chatserver
-        image: 192.168.100.30:8080/go/chatserver:2022
+        image: hermapyep/chatserver
         ports:
         - containerPort: 8080
         imagePullPolicy: Always
