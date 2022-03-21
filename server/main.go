@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -26,7 +27,7 @@ type ClientManager struct {
 	unregister chan *Client
 }
 
-//客户端 Client
+//客户端 Client,每个client单独维护一个socket
 type Client struct {
 	//用户id
 	id string
@@ -34,8 +35,6 @@ type Client struct {
 	socket *websocket.Conn
 	//发送的消息
 	send chan []byte
-	//服务器IP
-	ip string
 }
 
 //会把Message格式化成json
@@ -44,6 +43,8 @@ type Message struct {
 	Sender    string `json:"sender,omitempty"`    //发送者
 	Recipient string `json:"recipient,omitempty"` //接收者
 	Content   string `json:"content,omitempty"`   //内容
+	ServerIP  string `json:"serverIp,omitempty"`
+	SenderIP  string `json:"senderIp,omitempty"`
 }
 
 //创建客户端管理者
@@ -60,8 +61,10 @@ func (manager *ClientManager) start() {
 		case conn := <-manager.register:
 			manager.clients[conn.id] = conn
 			//把返回连接成功的消息json格式化
-			jsonMessage, _ := json.Marshal(&Message{Content: "/A new socket has connected. " + conn.ip, Sender: conn.id})
+			jsonMessage, _ := json.Marshal(&Message{Content: "A new socket has connected. ", ServerIP: LocalIp(), SenderIP: conn.socket.RemoteAddr().String()})
 			//manager.send(jsonMessage)
+
+			//同步生产消息模式
 			syncProducer(jsonMessage)
 			//如果连接断开了
 		case conn := <-manager.unregister:
@@ -69,7 +72,7 @@ func (manager *ClientManager) start() {
 			if _, ok := manager.clients[conn.id]; ok {
 				close(conn.send)
 				delete(manager.clients, conn.id)
-				jsonMessage, _ := json.Marshal(&Message{Content: "/A socket has disconnected. " + conn.ip, Sender: conn.id})
+				jsonMessage, _ := json.Marshal(&Message{Content: "A socket has disconnected. ", ServerIP: conn.socket.LocalAddr().String(), SenderIP: conn.socket.RemoteAddr().String()})
 				//manager.send(jsonMessage)
 				syncProducer(jsonMessage)
 			}
@@ -84,6 +87,7 @@ func (manager *ClientManager) start() {
 func (manager *ClientManager) send(message []byte) {
 	obj := &Message{}
 	_ = json.Unmarshal(message, obj)
+	// fmt.Println(obj)
 	for id, conn := range manager.clients {
 		if obj.Sender == id {
 			//continue
@@ -94,9 +98,10 @@ func (manager *ClientManager) send(message []byte) {
 	}
 }
 
-//定义客户端结构体的read方法
+//定义客户端结构体的read方法,负责读取web的信息
 func (c *Client) read() {
 	defer func() {
+		// 关闭后放入注销用户的通道中
 		manager.unregister <- c
 		_ = c.socket.Close()
 	}()
@@ -104,6 +109,7 @@ func (c *Client) read() {
 	for {
 		//读取消息
 		_, str, err := c.socket.ReadMessage()
+
 		//如果有错误信息，就注销这个连接然后关闭
 		if err != nil {
 			manager.unregister <- c
@@ -112,15 +118,22 @@ func (c *Client) read() {
 		}
 		//如果没有错误信息就把信息放入broadcast
 		message := &Message{}
-		_ = json.Unmarshal(str, message)
+		// 将str反序列化到message上
+		err = json.Unmarshal(str, message)
+		if err != nil {
+			message.Content = strings.TrimRight(string(str), "\r\n")
+		}
 		message.Sender = c.id
+		// 序列化message
 		jsonMessage, _ := json.Marshal(&message)
 		fmt.Println(fmt.Sprintf("read Id:%s, msg:%s", c.id, string(jsonMessage)))
 		//manager.broadcast <- jsonMessage
+		// 放入kafka
 		syncProducer(jsonMessage)
 	}
 }
 
+// 写入web中
 func (c *Client) write() {
 	defer func() {
 		_ = c.socket.Close()
@@ -135,7 +148,7 @@ func (c *Client) write() {
 				_ = c.socket.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			//有消息就写入，发送给web端
+			//有消息就写入wTextMessage中，发送给web端
 			_ = c.socket.WriteMessage(websocket.TextMessage, message)
 			fmt.Println(fmt.Sprintf("write Id:%s, msg:%s", c.id, string(message)))
 		}
@@ -150,9 +163,9 @@ func main() {
 	//注册默认路由为 /ws ，并使用wsHandler这个方法
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/health", healthHandler)
-	//监听本地的8011端口
+	//监听本地的8080端口
 	fmt.Println("chat server start.....")
-	_ = http.ListenAndServe(":8080", nil)
+	_ = http.ListenAndServe("192.168.31.155:8080", nil)
 }
 
 func wsHandler(res http.ResponseWriter, req *http.Request) {
@@ -164,7 +177,8 @@ func wsHandler(res http.ResponseWriter, req *http.Request) {
 	}
 
 	//每一次连接都会新开一个client，client.id通过uuid生成保证每次都是不同的
-	client := &Client{id: uuid.Must(uuid.NewV4(), nil).String(), socket: conn, send: make(chan []byte), ip: LocalIp()}
+	client := &Client{id: uuid.Must(uuid.NewV4(), nil).String(), socket: conn, send: make(chan []byte)}
+	fmt.Println(LocalIp())
 	//注册一个新的链接
 	manager.register <- client
 
@@ -178,25 +192,27 @@ func healthHandler(res http.ResponseWriter, _ *http.Request) {
 	_, _ = res.Write([]byte("ok"))
 }
 
+// 检查本地ip
 func LocalIp() string {
-	address, _ := net.InterfaceAddrs()
-	var ip = "localhost"
-	for _, address := range address {
-		if ipAddress, ok := address.(*net.IPNet); ok && !ipAddress.IP.IsLoopback() {
-			if ipAddress.IP.To4() != nil {
-				ip = ipAddress.IP.String()
-			}
-		}
+	conn, err := net.Dial("udp", "www.google.com.hk:80")
+	if err != nil {
+		fmt.Println(err.Error())
+		return ""
 	}
-	return ip
+	defer conn.Close()
+	return strings.Split(conn.LocalAddr().String(), ":")[0]
 }
 
 /////kafka
 
 var topic = "chat"
+
+// SyncProducer是一个发送的接口，发送成功后会返回发送到哪个partition以及数据的offset
+// 这里使用的是同步生产者
 var producer sarama.SyncProducer
 
 func initial() {
+	// 添加消费者的设置
 	config := sarama.NewConfig()
 	// Version 必须大于等于  V0_10_2_0
 	config.Version = sarama.V0_10_2_1
@@ -218,6 +234,7 @@ func initial() {
 	}
 	go ConsumerGroup(group, []string{topic})
 
+	// 设置新的同步生产者
 	config = sarama.NewConfig()
 	// 等待服务器所有副本都保存成功后的响应
 	config.Producer.RequiredAcks = sarama.WaitForAll
@@ -226,6 +243,7 @@ func initial() {
 	// 是否等待成功和失败后的响应
 	config.Producer.Return.Successes = true
 	config.Producer.Timeout = 5 * time.Second
+	// 这里的producer已经是更新过的
 	producer, err = sarama.NewSyncProducer(address, config)
 	if err != nil {
 		log.Printf("sarama.NewSyncProducer err, message=%s \n", err)
@@ -282,7 +300,7 @@ func (ConsumerGroupHandler) Cleanup(sess sarama.ConsumerGroupSession) error {
 
 // 这个方法用来消费消息的
 func (h ConsumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	// 获取消息
+	// 从消费者group中获取消息
 	for msg := range claim.Messages() {
 		fmt.Printf("kafka receive message %s---Partition:%d, Offset:%d, Key:%s, Value:%s\n", msg.Topic, msg.Partition, msg.Offset, string(msg.Key), string(msg.Value))
 		//发送消息

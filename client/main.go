@@ -2,19 +2,28 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"net/url"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
 
+type Message struct {
+	//消息struct
+	Sender    string `json:"sender,omitempty"`    //发送者
+	Recipient string `json:"recipient,omitempty"` //接收者
+	Content   string `json:"content,omitempty"`   //内容
+	ServerIP  string `json:"serverIp,omitempty"`
+	SenderIP  string `json:"senderIp,omitempty"`
+}
+
 //定义连接的服务端的网址
-var addr = flag.String("addr", "localhost:8080", "http service address")
+var addr = flag.String("addr", "192.168.31.155:8080", "http service address")
 var wg sync.WaitGroup
 
 func main() {
@@ -29,32 +38,26 @@ func main() {
 	}
 
 	// go timeWriter(conn)
-	// wg.Add(2)
-	// go read(conn)
-	// go writeM(conn)
-	// wg.Wait()
+	wg.Add(2)
+	go read(conn)
+	go writeM(conn)
+	wg.Wait()
 
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			fmt.Println("read:", err)
-			return
-		}
-		fmt.Printf("received: %s\n", message)
-	}
-}
-
-func timeWriter(conn *websocket.Conn) {
-	for {
-		time.Sleep(time.Second * 2)
-		conn.WriteMessage(websocket.TextMessage, []byte(time.Now().Format("2006-01-02 15:04:05")))
-	}
+	// for {
+	// 	_, message, err := conn.ReadMessage()
+	// 	if err != nil {
+	// 		fmt.Println("read:", err)
+	// 		return
+	// 	}
+	// 	fmt.Printf("received: %s\n", message)
+	// }
 }
 
 func writeM(conn *websocket.Conn) {
 	defer wg.Done()
 	for {
-		fmt.Print("请输入:")
+
+		fmt.Println("输入信息:")
 		reader := bufio.NewReader(os.Stdin)
 		data, _ := reader.ReadString('\n')
 		conn.WriteMessage(1, []byte(data))
@@ -71,6 +74,13 @@ func read(conn *websocket.Conn) {
 		if err == io.EOF {
 			continue
 		}
-		fmt.Println("获取到的信息:", string(msg))
+		message := &Message{}
+		_ = json.Unmarshal(msg, message)
+		if message.Recipient == "" {
+			fmt.Printf("获取到广播信息, sender:%s, content:%s\n", message.Sender, message.Content)
+		} else {
+			fmt.Printf("获取来自用户%s的私信, content:%s\n", message.Sender, message.Content)
+		}
+
 	}
 }
