@@ -64,6 +64,9 @@ spec:
     http:
       paths: 
       - path: /
+        pathType: Prefix
         backend:
-          serviceName: chatserver
-          servicePort: 8080
+          service: 
+            name: chatserver
+            port: 
+              number: 8080
