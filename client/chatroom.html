@@ -31,7 +31,7 @@
             });
             // 进入界面后会新建一个websocket
             if (window["WebSocket"]) {
-                conn = new WebSocket("ws://localhost:8080/ws");
+                conn = new WebSocket("ws://chatserver.go.com/ws");
                 conn.onclose = function(evt) {
                     appendLog($("<div><b>Connection Closed.</b></div>"))
                 }
