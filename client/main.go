@@ -23,7 +23,7 @@ type Message struct {
 }
 
 //定义连接的服务端的网址
-var addr = flag.String("addr", "chatserver.go.com", "http service address")
+var addr = flag.String("addr", "10.102.43.83:8080", "http service address")
 var wg sync.WaitGroup
 
 func main() {
