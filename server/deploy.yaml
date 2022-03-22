@@ -22,7 +22,7 @@ spec:
       - name: regsecret
       containers:
       - name: chatserver
-        image: hermapyep/chatserver
+        image: hermanyep/chatserver
         ports:
         - containerPort: 8080
         imagePullPolicy: Always
