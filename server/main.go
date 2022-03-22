@@ -165,7 +165,7 @@ func main() {
 	http.HandleFunc("/health", healthHandler)
 	//监听本地的8080端口
 	fmt.Println("chat server start.....")
-	_ = http.ListenAndServe("192.168.31.155:8080", nil)
+	_ = http.ListenAndServe("192.168.31.171:8080", nil)
 }
 
 func wsHandler(res http.ResponseWriter, req *http.Request) {
