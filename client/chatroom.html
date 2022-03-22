@@ -31,7 +31,7 @@
             });
             // 进入界面后会新建一个websocket
             if (window["WebSocket"]) {
-                conn = new WebSocket("ws://192.168.31.155:8080/ws");
+                conn = new WebSocket("ws://localhost:8080/ws");
                 conn.onclose = function(evt) {
                     appendLog($("<div><b>Connection Closed.</b></div>"))
                 }

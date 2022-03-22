@@ -23,7 +23,7 @@ type Message struct {
 }
 
 //定义连接的服务端的网址
-var addr = flag.String("addr", "192.168.31.171:8080", "http service address")
+var addr = flag.String("addr", "localhost:8080", "http service address")
 var wg sync.WaitGroup
 
 func main() {
