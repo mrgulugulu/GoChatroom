@@ -62,10 +62,10 @@ func (manager *ClientManager) start() {
 			manager.clients[conn.id] = conn
 			//把返回连接成功的消息json格式化
 			jsonMessage, _ := json.Marshal(&Message{Content: "A new socket has connected. ", ServerIP: LocalIp(), SenderIP: conn.socket.RemoteAddr().String()})
-			manager.send(jsonMessage)
+			// manager.send(jsonMessage)
 
 			//同步生产消息模式
-			// syncProducer(jsonMessage)
+			syncProducer(jsonMessage)
 			//如果连接断开了
 		case conn := <-manager.unregister:
 			//判断连接的状态，如果是true,就关闭send，删除连接client的值
@@ -73,8 +73,8 @@ func (manager *ClientManager) start() {
 				close(conn.send)
 				delete(manager.clients, conn.id)
 				jsonMessage, _ := json.Marshal(&Message{Content: "A socket has disconnected. ", ServerIP: conn.socket.LocalAddr().String(), SenderIP: conn.socket.RemoteAddr().String()})
-				manager.send(jsonMessage)
-				// syncProducer(jsonMessage)
+				// manager.send(jsonMessage)
+				syncProducer(jsonMessage)
 			}
 			//广播
 		case message := <-manager.broadcast:
@@ -127,9 +127,9 @@ func (c *Client) read() {
 		// 序列化message
 		jsonMessage, _ := json.Marshal(&message)
 		fmt.Println(fmt.Sprintf("read Id:%s, msg:%s", c.id, string(jsonMessage)))
-		manager.broadcast <- jsonMessage
+		// manager.broadcast <- jsonMessage
 		// 放入kafka
-		// syncProducer(jsonMessage)
+		syncProducer(jsonMessage)
 	}
 }
 
