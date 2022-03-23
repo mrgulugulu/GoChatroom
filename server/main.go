@@ -159,13 +159,13 @@ func main() {
 	fmt.Println("Starting application...")
 	//开一个goroutine执行开始程序
 	go manager.start()
-	// initial()
+	initial()
 	//注册默认路由为 /ws ，并使用wsHandler这个方法
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/health", healthHandler)
 	//监听本地的8080端口
 	fmt.Println("chat server start.....")
-	_ = http.ListenAndServe(":8080", nil)
+	_ = http.ListenAndServe("localhost:8080", nil)
 }
 
 func wsHandler(res http.ResponseWriter, req *http.Request) {
@@ -179,6 +179,7 @@ func wsHandler(res http.ResponseWriter, req *http.Request) {
 	//每一次连接都会新开一个client，client.id通过uuid生成保证每次都是不同的
 	client := &Client{id: uuid.Must(uuid.NewV4(), nil).String(), socket: conn, send: make(chan []byte)}
 	fmt.Println(LocalIp())
+
 	//注册一个新的链接
 	manager.register <- client
 
@@ -219,7 +220,7 @@ func initial() {
 	config.Consumer.Return.Errors = true
 	fmt.Println("start connect kafka")
 	// 开始连接kafka服务器
-	address := []string{"127.0.0.1:9092"}
+	address := []string{"10.101.110.38:9092"}
 	client, err := sarama.NewClient(address, config)
 	if err != nil {
 		fmt.Println("connect kafka failed; err", err)
